@@ -1,0 +1,65 @@
+[gd_scene format=3]
+
+[sub_resource type="Gradient" id="fade"]
+offsets = PackedFloat32Array(0, 0.15, 1)
+colors = PackedColorArray(1, 1, 1, 0, 1, 1, 1, 0.7, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture1D" id="fade_texture"]
+gradient = SubResource("fade")
+
+[sub_resource type="Curve" id="growth"]
+_data = [Vector2(0, 0.4), 0.0, 0.0, 0, 0, Vector2(1, 1), 0.0, 0.0, 0, 0]
+point_count = 2
+
+[sub_resource type="CurveTexture" id="growth_texture"]
+curve = SubResource("growth")
+
+[sub_resource type="ParticleProcessMaterial" id="motion"]
+emission_shape = 3
+emission_box_extents = Vector3(4, 0.2, 1)
+direction = Vector3(0, 1, 0.5)
+spread = 35.0
+initial_velocity_min = 2.0
+initial_velocity_max = 6.0
+gravity = Vector3(0, -7, 0)
+damping_min = 0.5
+damping_max = 1.5
+scale_min = 0.6
+scale_max = 1.6
+scale_curve = SubResource("growth_texture")
+color_ramp = SubResource("fade_texture")
+
+[sub_resource type="Gradient" id="puff"]
+colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 0)
+
+[sub_resource type="GradientTexture2D" id="puff_texture"]
+gradient = SubResource("puff")
+width = 64
+height = 64
+fill = 1
+fill_from = Vector2(0.5, 0.5)
+fill_to = Vector2(1, 0.5)
+
+[sub_resource type="StandardMaterial3D" id="look"]
+transparency = 1
+vertex_color_use_as_albedo = true
+albedo_texture = SubResource("puff_texture")
+billboard_mode = 3
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+proximity_fade_enabled = true
+proximity_fade_distance = 0.5
+
+[sub_resource type="QuadMesh" id="quad"]
+material = SubResource("look")
+
+[node name="Splash" type="GPUParticles3D"]
+editor_description = "The spray where a waterfall lands. WaterPath makes one per landing, sets its width and its Amount, and turns it to face downstream."
+cast_shadow = 0
+amount = 80
+lifetime = 1.2
+randomness = 0.5
+visibility_aabb = AABB(-40, -5, -40, 80, 30, 80)
+process_material = SubResource("motion")
+draw_pass_1 = SubResource("quad")

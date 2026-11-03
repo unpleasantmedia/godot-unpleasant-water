@@ -1,0 +1,47 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://dvr1bgjqpjq2d"]
+
+[ext_resource type="Texture2D" uid="uid://buy5e8wqvq856" path="res://addons/unpleasant_water/Textures/Foam.tres" id="foam"]
+[ext_resource type="Texture2D" uid="uid://wtwr87v4r6n3" path="res://addons/unpleasant_water/Textures/Ripples.tres" id="ripples"]
+[ext_resource type="Shader" uid="uid://clhx15es7aabn" path="res://addons/unpleasant_water/Shaders/Water.gdshader" id="shader"]
+
+[resource]
+resource_name = "River"
+render_priority = -1
+shader = ExtResource("shader")
+shader_parameter/shallow_colour = Color(0.22, 0.43, 0.4, 1)
+shader_parameter/deep_colour = Color(0.05, 0.2, 0.24, 1)
+shader_parameter/absorption = 0.55
+shader_parameter/clearest = 0.45
+shader_parameter/roughness_amount = 0.1
+shader_parameter/ripple_normal = ExtResource("ripples")
+shader_parameter/ripple_strength = 1.17999997362464
+shader_parameter/ripple_size = 24.0
+shader_parameter/small_ripple_size = 2.5
+shader_parameter/flowing = true
+shader_parameter/flow_speed = 1.5
+shader_parameter/wind_direction = Vector2(1, 0.4)
+shader_parameter/wave_height = 0.0
+shader_parameter/wave_length = 20.0
+shader_parameter/wave_speed = 1.0
+shader_parameter/offshore_wave_height = 0.0
+shader_parameter/offshore_wave_length = 110.0
+shader_parameter/offshore_wave_speed = 0.5
+shader_parameter/offshore_distance = 600.0
+shader_parameter/shore_waves = false
+shader_parameter/shore_area = Vector4(0, 0, 1, 1)
+shader_parameter/surf_distance = 90.0
+shader_parameter/surf_spacing = 26.0
+shader_parameter/surf_speed = 4.0
+shader_parameter/surf_foam = 1.0
+shader_parameter/surf_shore_distance = 0.0
+shader_parameter/surf_deform = 18.0
+shader_parameter/surf_river_clearance = 250.0
+shader_parameter/underwater_colour = Color(0, 0, 0, 0)
+shader_parameter/underwater_density = 0.15
+shader_parameter/foam_texture = ExtResource("foam")
+shader_parameter/foam_colour = Color(0.9, 0.95, 0.95, 1)
+shader_parameter/foam_size = 5.0
+shader_parameter/shore_foam = 5.0
+shader_parameter/steep_foam = 1.999999955296
+shader_parameter/masked = false
+shader_parameter/mask_area = Vector4(0, 0, 1, 1)

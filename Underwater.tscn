@@ -1,0 +1,20 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://addons/unpleasant_water/Core/WaterUnderwater.cs" id="script"]
+[ext_resource type="Shader" path="res://addons/unpleasant_water/Shaders/Underwater.gdshader" id="shader"]
+
+[sub_resource type="ShaderMaterial" id="look"]
+render_priority = 100
+shader = ExtResource("shader")
+
+[sub_resource type="QuadMesh" id="quad"]
+material = SubResource("look")
+
+[node name="Underwater" type="MeshInstance3D"]
+editor_description = "The water around a camera that is under it. A water node adds one; its colour and thickness come from the water's material."
+visible = false
+cast_shadow = 0
+custom_aabb = AABB(-100000, -100000, -100000, 200000, 200000, 200000)
+ignore_occlusion_culling = true
+mesh = SubResource("quad")
+script = ExtResource("script")

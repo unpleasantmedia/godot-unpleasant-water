@@ -1,0 +1,30 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://addons/unpleasant_water/Shaders/Water.gdshader" id="shader"]
+[ext_resource type="Texture2D" path="res://addons/unpleasant_water/Textures/Ripples.tres" id="ripples"]
+[ext_resource type="Texture2D" path="res://addons/unpleasant_water/Textures/Foam.tres" id="foam"]
+
+[resource]
+resource_name = "Pond"
+render_priority = -2
+shader = ExtResource("shader")
+shader_parameter/shallow_colour = Color(0.26, 0.36, 0.2, 1)
+shader_parameter/deep_colour = Color(0.07, 0.15, 0.1, 1)
+shader_parameter/absorption = 0.9
+shader_parameter/clearest = 0.5
+shader_parameter/roughness_amount = 0.1
+shader_parameter/ripple_normal = ExtResource("ripples")
+shader_parameter/ripple_strength = 0.25
+shader_parameter/ripple_size = 6
+shader_parameter/small_ripple_size = 2
+shader_parameter/flowing = false
+shader_parameter/flow_speed = 0.04
+shader_parameter/wind_direction = Vector2(1, 0.4)
+shader_parameter/wave_height = 0
+shader_parameter/wave_length = 10
+shader_parameter/wave_speed = 1
+shader_parameter/foam_texture = ExtResource("foam")
+shader_parameter/foam_colour = Color(0.9, 0.95, 0.95, 1)
+shader_parameter/foam_size = 3
+shader_parameter/shore_foam = 0.08
+shader_parameter/steep_foam = 0
