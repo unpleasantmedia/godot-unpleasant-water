@@ -8,7 +8,7 @@ namespace UnpleasantMedia.UnpleasantWater;
 /// <summary>Water that lies still within an outline: a sea, a lake or a pond. Its surface is at the node's height, and the outline's own heights are ignored.</summary>
 [Tool]
 [GlobalClass]
-[Icon("res://addons/unpleasant_water/Icons/Water.svg")]
+[Icon("res://addons/unpleasant_water/Icons/Water-Body.svg")]
 public partial class WaterBody : WaterNode
 {
     public enum BodyType { Sea, Lake, Pond }

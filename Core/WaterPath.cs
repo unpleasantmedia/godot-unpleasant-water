@@ -11,7 +11,7 @@ namespace UnpleasantMedia.UnpleasantWater;
 /// </summary>
 [Tool]
 [GlobalClass]
-[Icon("res://addons/unpleasant_water/Icons/Water.svg")]
+[Icon("res://addons/unpleasant_water/Icons/Water-Path.svg")]
 public partial class WaterPath : WaterNode
 {
     public enum PathType { River, Creek, Waterfall }

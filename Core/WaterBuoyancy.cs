@@ -4,7 +4,7 @@ namespace UnpleasantMedia.UnpleasantWater;
 
 /// <summary>Floats its parent RigidBody3D on any water it is in, and lets the current carry it, by the corners of a box round it.</summary>
 [GlobalClass]
-[Icon("res://addons/unpleasant_water/Icons/Water.svg")]
+[Icon("res://addons/unpleasant_water/Icons/Water-Buoyancy.svg")]
 public partial class WaterBuoyancy : Node
 {
     /// <summary>The size of the box of points tested, round the body's middle.</summary>
