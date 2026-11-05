@@ -9,7 +9,26 @@ public readonly record struct WaterSample(float Height, Vector3 Flow, WaterNode 
 /// <summary>Asks about the water in the scene.</summary>
 public static class Water
 {
-    internal static readonly List<WaterNode> InTree = [];
+    private static List<WaterNode>? _inTree;
+
+    /// <summary>All the water in the tree. Found afresh the first time it is asked for: reloading the code empties this, and the water already in the tree does not enter it again.</summary>
+    internal static List<WaterNode> InTree => _inTree ??= Found();
+
+    private static List<WaterNode> Found()
+    {
+        var found = new List<WaterNode>();
+        void Look(Node node)
+        {
+            if (node is WaterNode water && water.IsInsideTree())
+                found.Add(water);
+            foreach (var child in node.GetChildren(true))
+                Look(child);
+        }
+
+        if (Engine.GetMainLoop() is SceneTree tree)
+            Look(tree.Root);
+        return found;
+    }
 
     /// <summary>The water over or under a place, or null if there is none. With several, the surface nearest in height.</summary>
     public static WaterSample? At(Vector3 at)

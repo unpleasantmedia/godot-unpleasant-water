@@ -25,7 +25,6 @@ public partial class WaterPath : WaterNode
     // Only a body about this close in height counts as what it runs into: from higher up it falls on it, with no blending.
     private const float MostJoinDrop = 5f;
     private const float JoinLift = 0.05f;
-    private const float BodyComesBackOver = 20f;
     private const float LevelledOut = 0.5f;
     private const int FramesBetweenSplashRefreshes = 20;
     private const int MostSplashParticles = 1000;
@@ -269,6 +268,32 @@ public partial class WaterPath : WaterNode
 
     protected override ShaderMaterial? TypeMaterial => LoadType(Type.ToString());
 
+    private ShaderMaterial? _joiningMaterial;
+    private (ShaderMaterial From, ShaderMaterial Into)? _joiningOf;
+
+    // Its material, told the look of the water it ends in, to turn into over Join Blend.
+    protected override ShaderMaterial? DrawnMaterial
+    {
+        get
+        {
+            if (Material is not { } own)
+                return null;
+            if (Built?.Steps.Select(s => s.Ends).LastOrDefault(e => e is not null)?.Material is not { } into)
+                return own;
+            if (_joiningOf != (own, into))
+            {
+                _joiningMaterial = (ShaderMaterial)own.Duplicate();
+                _joiningMaterial.SetShaderParameter("joining_shallow", into.GetShaderParameter("shallow_colour"));
+                _joiningMaterial.SetShaderParameter("joining_deep", into.GetShaderParameter("deep_colour"));
+                _joiningMaterial.SetShaderParameter("joining_absorption", into.GetShaderParameter("absorption"));
+                _joiningMaterial.SetShaderParameter("joining_clearest", into.GetShaderParameter("clearest"));
+                _joiningOf = (own, into);
+            }
+
+            return _joiningMaterial;
+        }
+    }
+
     protected override Curve3D NewCurve()
     {
         var curve = new Curve3D();
@@ -276,6 +301,10 @@ public partial class WaterPath : WaterNode
         curve.AddPoint(new Vector3(0f, 0f, 20f));
         return curve;
     }
+
+    /// <summary>Whether its curve is still the one a new node starts with.</summary>
+    internal bool HasNewCurve => Curve is { PointCount: 2 } curve
+        && curve.GetPointPosition(0).IsEqualApprox(new Vector3(0f, 0f, -20f)) && curve.GetPointPosition(1).IsEqualApprox(new Vector3(0f, 0f, 20f));
 
     /// <summary>One step along the curve, in the node's space.</summary>
     private readonly record struct Step(Vector3 At, Vector3 Forward, Vector3 Right, float Width, float Along, float Steep, float Leaving = 1f, WaterNode? Into = null, float Ending = 1f, WaterNode? Ends = null);
@@ -452,39 +481,86 @@ public partial class WaterPath : WaterNode
 
     private BuiltSteps? _built;
 
-    /// <summary>A line across it, in the world, seen from above: how much it hides water there.</summary>
-    internal readonly record struct MaskRow(Vector2 Middle, Vector2 Across, float Value, float Leaving);
+    // Reloading the code loses what was built, though the mesh stays.
+    private BuiltSteps? Built => _built ??= Curve is not null && IsInsideTree() ? new BuiltSteps(Steps()) : null;
 
-    /// <summary>How much of it shows at a place across it (-0.5 to 0.5), by its soft sides, which come in as it leaves other water.</summary>
-    internal static float SideFade(float across, float leaving) =>
-        Mathf.Lerp(1f, Mathf.Clamp((0.5f - Mathf.Abs(across)) / 0.2f, 0f, 1f), leaving);
+    /// <summary>A line across it, in the world, seen from above: how much it hides water there.</summary>
+    internal readonly record struct MaskRow(Vector2 Middle, Vector2 Across, float Value, float Leaving, float Soft);
+
+    /// <summary>How much of it shows at a place across it (-0.5 to 0.5): solid, or by soft (0 to 1) fading from its middle out to its edges; its edges fade in as it leaves other water.</summary>
+    internal static float SideFade(float across, float leaving, float soft) =>
+        Mathf.Lerp(1f, Mathf.Clamp(1f - Mathf.Abs(across) * 2f, 0f, 1f), soft * leaving);
+
+    /// <summary>How soft its sides are at a step (0 to 1): not at all, its depth alone shading it, but coming in gradually before it ends in other water, from where its edges first have no bank to meet (or Join Blend before its end, if sooner), so it melts into that water rather than meeting it along a line.</summary>
+    private float SoftAt(Step step, float length) =>
+        Mathf.Max(SoftSides(step, length).Left, SoftSides(step, length).Right);
+
+    /// <summary>How many Join Blends before an edge runs out over water its side starts to soften: long, for no line to show across the river.</summary>
+    private const float SoftLead = 0.75f;
 
     /// <summary>
-    /// The lines across it under which a body it runs into should be hidden, all along it, as that
-    /// can reach far under it. The body comes back fully before its last point, where this only then
-    /// starts to fade: fading both at once would leave them see-through together.
+    /// How soft each of its sides is at a step (0 to 1). Each goes by its own edge, as the banks do not
+    /// end together: fully soft by where that edge last has ground above the water, so it never shows
+    /// as a line over water. All come in over Join Blend before its end too.
+    /// </summary>
+    private (float Left, float Right) SoftSides(Step step, float length)
+    {
+        if (step.Ends is null)
+            return (0f, 0f);
+        var end = Mathf.SmoothStep(length - JoinBlend, length, step.Along);
+        var (left, right) = _softFrom ??= BanksEnd(length);
+        var lead = JoinBlend * SoftLead;
+        return (Mathf.Max(end, Mathf.SmoothStep(left - lead, left, step.Along)), Mathf.Max(end, Mathf.SmoothStep(right - lead, right, step.Along)));
+    }
+
+    private (float Left, float Right)? _softFrom;
+
+    /// <summary>How far along each of its edges, looking back from its end, last has ground above the water.</summary>
+    private (float Left, float Right) BanksEnd(float length)
+    {
+        if (Built is not { } built || WaterGround.Finder?.Invoke(this) is not { } ground)
+            return (length, length);
+        float Side(float across)
+        {
+            var bank = length;
+            foreach (var step in built.Steps.Where(s => s.Along <= length).Reverse())
+            {
+                if (ground.HeightAt(ToGlobal(step.At + step.Right * (across * step.Width))) >= ToGlobal(step.At).Y)
+                    break;
+                bank = step.Along;
+            }
+
+            return bank;
+        }
+
+        return (Side(-0.5f), Side(0.5f));
+    }
+
+    /// <summary>
+    /// The lines across it under which a body it runs into should be hidden, all along it, so that
+    /// body's shoreline never shows through. The body comes back well before its last point, while
+    /// this is still solid: hiding it further on left the ground showing where this fades.
     /// </summary>
     internal IEnumerable<MaskRow> MaskRows(WaterBody body)
     {
-        if (_built is null || Curve is not { } curve)
+        if (Built is null || Curve is not { } curve)
             yield break;
         var length = curve.GetBakedLength();
-        var comesBack = Mathf.Min(JoinBlend * 0.5f, BodyComesBackOver);
+        var (backFrom, backBy) = (length - JoinBlend, length - JoinBlend * 0.25f);
         foreach (var step in _built.Steps)
         {
-            if (step.Ends != body || step.Along >= length)
+            if (step.Ends != body || step.Along >= backBy)
                 continue;
             var middle = ToGlobal(step.At);
             var across = GlobalBasis.Orthonormalized() * step.Right * step.Width;
-            var value = 1f - Mathf.SmoothStep(length - comesBack, length, step.Along);
-            yield return new MaskRow(new Vector2(middle.X, middle.Z), new Vector2(across.X, across.Z), value, step.Leaving);
+            yield return new MaskRow(new Vector2(middle.X, middle.Z), new Vector2(across.X, across.Z), 1f - Mathf.SmoothStep(backFrom, backBy, step.Along), step.Leaving, SoftAt(step, length));
         }
     }
 
     /// <summary>Where it runs into a body, and how far round that its surf stays away, seen from above; null if it does not.</summary>
     internal (Vector2 Middle, float Radius)? MouthAt(WaterBody body, float clearance)
     {
-        if (_built is null || Curve is not { } curve || _built.Steps.Count == 0 || _built.Steps[^1].Ends != body)
+        if (Built is null || Curve is not { } curve || _built!.Steps.Count == 0 || _built.Steps[^1].Ends != body)
             return null;
         var end = ToGlobal(curve.GetPointPosition(curve.PointCount - 1));
         return (new Vector2(end.X, end.Z), _built.Steps[^1].Width * 0.5f + clearance);
@@ -531,6 +607,11 @@ public partial class WaterPath : WaterNode
 
     /// <summary>How much faster than its material's speed water goes on a slope this steep (0 flat, 1 straight down).</summary>
     private static float SpeedUp(float steep) => 1f + (FastestSpeedUp - 1f) * Mathf.Sqrt(steep);
+
+    /// <summary>What a slope multiplies its speed by at a place: nothing at a point with its own speed, which is exactly what it says, easing between points.</summary>
+    private float SlopeFactorAt(float offset, float steep) =>
+        BetweenPoints(offset, i => i < PointFlowSpeeds.Count && PointFlowSpeeds[i] > 0f ? 1f : SpeedUp(steep));
+
 
     /// <summary>
     /// A spray at each place it comes off a steep drop onto the flat. Its children are looked at each
@@ -619,6 +700,7 @@ public partial class WaterPath : WaterNode
     {
         var steps = Steps();
         _built = new BuiltSteps(steps);
+        _softFrom = null;
         foreach (var body in Water.InTree.OfType<WaterBody>())
             body.QueueMask();
         UpdateSplashes(steps);
@@ -646,10 +728,13 @@ public partial class WaterPath : WaterNode
         foreach (var step in steps)
         {
             var relative = ownSpeed > 0f ? SpeedAt(step.Along) / Mathf.Max(scrollSpeed, 0.001f) : 1f;
-            travel += (step.Along - lastAlong) / Mathf.Max(relative * SpeedUp(step.Steep), 0.01f);
+            travel += (step.Along - lastAlong) / Mathf.Max(relative * SlopeFactorAt(step.Along, step.Steep), 0.01f);
             lastAlong = step.Along;
             var normal = step.Forward.Cross(step.Right).Normalized();
-            var colour = new Color(SpeedUp(step.Steep) / FastestSpeedUp, Mathf.SmoothStep(0.1f, 0.6f, step.Steep), 0f);
+            // Blue: how far it has taken on the look of the water it ends in.
+            var joining = step.Ends is null ? 0f : Mathf.SmoothStep(0f, JoinBlend, step.Along - (Curve!.GetBakedLength() - JoinBlend));
+            var (softLeft, softRight) = SoftSides(step, Curve!.GetBakedLength());
+            var colour = new Color(SpeedUp(step.Steep) / FastestSpeedUp, Mathf.SmoothStep(0.1f, 0.6f, step.Steep), joining);
             for (var i = 0; i < across.Length; i++)
             {
                 var at = step.At + step.Right * across[i] * step.Width;
@@ -659,11 +744,12 @@ public partial class WaterPath : WaterNode
                 tangents.AddRange([step.Right.X, step.Right.Y, step.Right.Z, 1f]);
                 uvs.Add(new Vector2(across[i] * step.Width, travel));
                 // Its full width where it leaves its source, so its soft edges only start past the join.
-                colours.Add(colour with { A = SideFade(across[i], step.Leaving) * fading * step.Ending });
+                colours.Add(colour with { A = SideFade(across[i], step.Leaving, across[i] < 0f ? softLeft : softRight) * fading * step.Ending });
                 uv2s.Add(new Vector2(scrollSpeed, ownSpeed));
             }
         }
 
+        ApplyMaterial();
         for (var s = 0; s < steps.Count - 1; s++)
         {
             for (var i = 0; i < columns - 1; i++)
@@ -758,7 +844,7 @@ public partial class WaterPath : WaterNode
         if (ahead.LengthSquared() <= 1e-8f)
             return null;
         var forward = ahead.Normalized();
-        var speed = SpeedAt(offset) * SpeedUp(Mathf.Clamp(-forward.Y, 0f, 1f));
+        var speed = SpeedAt(offset) * SlopeFactorAt(offset, Mathf.Clamp(-forward.Y, 0f, 1f));
         var surface = ToGlobal(centre);
         return SampleWith(new Vector3(at.X, surface.Y, at.Z), GlobalBasis.Orthonormalized() * forward * speed);
     }

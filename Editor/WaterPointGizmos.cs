@@ -40,8 +40,20 @@ public partial class WaterPointGizmos : EditorNode3DGizmoPlugin
                 (nearest, best) = (i, distance);
         }
 
+        if (nearest >= 0)
+        {
+            PickedPath = path;
+            PickedPoint = nearest;
+            Picks++;
+        }
+
         return nearest;
     }
+
+    /// <summary>The point last clicked, and how many have been, for the plugin's toolbar to follow.</summary>
+    public WaterPath? PickedPath { get; private set; }
+    public int PickedPoint { get; private set; }
+    public int Picks { get; private set; }
 
     public override int[] _SubgizmosIntersectFrustum(EditorNode3DGizmo gizmo, Camera3D camera, Godot.Collections.Array<Plane> frustum)
     {

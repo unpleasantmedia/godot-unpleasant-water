@@ -1,7 +1,7 @@
 shader_type spatial;
 render_mode blend_mix, cull_disabled, depth_draw_always, diffuse_burley, specular_schlick_ggx;
 
-// Vertex colours from the mesh: red is a quarter of how much faster it flows here, green its foam, alpha fades to its edges.
+// Vertex colours from the mesh: red is a quarter of how much faster it flows here, green its foam, blue how far it has taken on the look of the water it ends in, alpha fades to its edges.
 // On a path, UV's y already allows for how fast it flows at each place, so one scroll speed serves it all.
 // UV2 from a path with its own speeds: x that scroll speed, y 1 (0 goes by flow_speed instead).
 
@@ -12,6 +12,13 @@ uniform vec3 deep_colour : source_color = vec3(0.03, 0.2, 0.3);
 uniform float absorption : hint_range(0.0, 5.0, 0.01) = 0.5;
 uniform float clearest : hint_range(0.0, 1.0, 0.01) = 0.35;
 uniform float roughness_amount : hint_range(0.0, 1.0, 0.01) = 0.08;
+// The look of the water a path ends in, set from that water.
+uniform vec3 joining_shallow : source_color = vec3(0.2, 0.55, 0.55);
+uniform vec3 joining_deep : source_color = vec3(0.03, 0.2, 0.3);
+uniform float joining_absorption = 0.5;
+uniform float joining_clearest = 0.35;
+// Metres of water depth over which a body thins away at the shore round a river's mouth.
+uniform float mouth_shore_fade = 1.5;
 
 group_uniforms ripples;
 uniform sampler2D ripple_normal : hint_normal, filter_linear_mipmap, repeat_enable;
@@ -120,9 +127,17 @@ void vertex() {
 	world_position = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	if (!flowing && (wave_height > 0.0 || offshore_wave_height > 0.0)) {
 		float offshore = smoothstep(0.0, max(offshore_distance, 1.0), shore_distance(world_position.xz));
-		float lift = wave(world_position.xz, TIME, offshore);
-		float dx = wave(world_position.xz + vec2(0.5, 0.0), TIME, offshore) - lift;
-		float dz = wave(world_position.xz + vec2(0.0, 0.5), TIME, offshore) - lift;
+		// Flat round a river's mouth (where its surf is kept away): a wave standing over the river's surface would block it out.
+		float settled = 1.0;
+		if (masked) {
+			vec2 place = (world_position.xz - mask_area.xy) / mask_area.zw;
+			if (place.x >= 0.0 && place.y >= 0.0 && place.x <= 1.0 && place.y <= 1.0) {
+				settled = 1.0 - textureLod(water_mask, place, 0.0).g;
+			}
+		}
+		float lift = wave(world_position.xz, TIME, offshore) * settled;
+		float dx = wave(world_position.xz + vec2(0.5, 0.0), TIME, offshore) * settled - lift;
+		float dz = wave(world_position.xz + vec2(0.0, 0.5), TIME, offshore) * settled - lift;
 		VERTEX.y += lift;
 		NORMAL = normalize(vec3(-dx * 2.0, 1.0, -dz * 2.0));
 	}
@@ -202,9 +217,12 @@ void fragment() {
 	float scene = texture(depth_texture, SCREEN_UV).r;
 	vec4 behind = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, scene, 1.0);
 	float depth = max(VERTEX.z - behind.z / behind.w, 0.0);
-	float deepness = 1.0 - exp(-depth * absorption);
+	float deepness = 1.0 - exp(-depth * mix(absorption, joining_absorption, COLOR.b));
 
-	float near_shore = shore_foam > 0.0 ? 1.0 - smoothstep(0.0, shore_foam, depth) : 0.0;
+	float near_shore = shore_foam > 0.0 ? (1.0 - smoothstep(0.0, shore_foam, depth)) * (1.0 - calm) : 0.0;
+	// Round a river's mouth it has no waterline to see: it thins away into the shallows.
+	vec4 ground_below = INV_VIEW_MATRIX * vec4(behind.xyz / behind.w, 1.0);
+	float thinned = mix(1.0, smoothstep(0.0, mouth_shore_fade, world_position.y - ground_below.y), calm);
 	float foam = smoothstep(0.5, 0.75, pattern * (near_shore + COLOR.g * steep_foam));
 
 	// Breaking waves: each is a line of foam at its crest, running in to the shore, trailing foam behind it. Some are stronger than others, and each breaks in stretches.
@@ -228,8 +246,8 @@ void fragment() {
 		}
 	}
 
-	ALBEDO = mix(mix(shallow_colour, deep_colour, deepness) * (1.0 - crest_shade * 0.3), foam_colour, foam);
+	ALBEDO = mix(mix(mix(shallow_colour, joining_shallow, COLOR.b), mix(deep_colour, joining_deep, COLOR.b), deepness) * (1.0 - crest_shade * 0.3), foam_colour, foam);
 	ROUGHNESS = mix(roughness_amount, 0.9, foam);
 	SPECULAR = 0.5;
-	ALPHA = mix(mix(clearest, 1.0, deepness), 1.0, foam) * COLOR.a * shown;
+	ALPHA = mix(mix(mix(clearest, joining_clearest, COLOR.b), 1.0, deepness), 1.0, foam) * COLOR.a * shown * thinned;
 }

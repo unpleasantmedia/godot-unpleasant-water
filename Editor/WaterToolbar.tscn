@@ -1,0 +1,133 @@
+[gd_scene format=3]
+
+[node name="WaterToolbar" type="HBoxContainer"]
+
+[node name="Separator" type="VSeparator" parent="."]
+layout_mode = 2
+
+[node name="DrawButton" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Draw water paths. Click: add a point, or pick one and drag it. Click the line: insert a point. Alt+wheel: selected point's width. Delete: remove the selected point. Right-click or Esc: finish."
+toggle_mode = true
+text = "Draw"
+
+[node name="GenerateButton" type="Button" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Click a source on the ground: a river runs down from it by the steepest way, forming lakes in hollows."
+toggle_mode = true
+text = "Generate"
+
+[node name="StopHeightLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Stop at"
+
+[node name="StopHeightSpin" type="SpinBox" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "A generated river stops where the ground comes down to this height."
+min_value = -1000.0
+max_value = 5000.0
+step = 0.5
+allow_greater = true
+allow_lesser = true
+suffix = "m"
+
+[node name="WidenFromLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Widen from"
+
+[node name="WidenFromSpin" type="SpinBox" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "How wide a generated river is at its start."
+min_value = 0.1
+max_value = 200.0
+step = 0.1
+value = 6.0
+allow_greater = true
+suffix = "m"
+
+[node name="WidenLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Widen to"
+
+[node name="WidenSpin" type="SpinBox" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "A generated river widens gradually, point by point, from Widen From to this at its end, across any lakes on the way; 0 keeps it at Widen From."
+max_value = 200.0
+step = 0.1
+allow_greater = true
+suffix = "m"
+
+[node name="SpeedLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Speed"
+
+[node name="SpeedSpin" type="SpinBox" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "How fast a generated river flows on the flat."
+min_value = 0.1
+max_value = 30.0
+step = 0.1
+value = 3.0
+allow_greater = true
+suffix = "m/s"
+
+[node name="SlopeBoostLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Slope x"
+
+[node name="SlopeBoostSpin" type="SpinBox" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "What a straight drop multiplies a generated river's speed by. Gentler slopes get less: a 10% slope gets about a third of the way there."
+min_value = 1.0
+max_value = 50.0
+step = 0.5
+value = 6.0
+allow_greater = true
+
+[node name="TypeMenu" type="OptionButton" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "The type of the selected path, and of new ones."
+selected = 0
+item_count = 3
+popup/item_0/text = "River"
+popup/item_0/id = 0
+popup/item_1/text = "Creek"
+popup/item_1/id = 1
+popup/item_2/text = "Waterfall"
+popup/item_2/id = 2
+
+[node name="WidthLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Width"
+
+[node name="WidthSpin" type="SpinBox" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "The width of the selected path, and of new ones."
+min_value = 0.1
+max_value = 200.0
+step = 0.1
+value = 6.0
+allow_greater = true
+suffix = "m"
+
+[node name="PointWidthLabel" type="Label" parent="."]
+layout_mode = 2
+text = "Point"
+
+[node name="PointWidthSpin" type="SpinBox" parent="."]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "The width at the selected point; 0 uses the path's width."
+max_value = 200.0
+step = 0.1
+allow_greater = true
+suffix = "m"

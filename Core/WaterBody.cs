@@ -347,7 +347,10 @@ public partial class WaterBody : WaterNode
             var count = Mathf.CeilToInt(wide / (perPixel * 0.7f));
             for (var i = 0; i <= count; i++)
             {
-                var at = row.Middle + along * (wide * i / count - wide * 0.5f);
+                var off = wide * i / count - wide * 0.5f;
+                var at = row.Middle + along * off;
+                // All of it beside the river, easing to none over the margin, so no line shows where it stops.
+                var keptAway = (byte)((1f - Mathf.SmoothStep(row.Across.Length() * 0.5f, wide * 0.5f, Mathf.Abs(off))) * 255f);
                 for (var dz = 0; dz <= 1; dz++)
                 {
                     for (var dx = 0; dx <= 1; dx++)
@@ -355,7 +358,7 @@ public partial class WaterBody : WaterNode
                         var x = Mathf.FloorToInt((at.X - low.X) / perPixel) + dx;
                         var z = Mathf.FloorToInt((at.Y - low.Y) / perPixel) + dz;
                         if (x >= 0 && z >= 0 && x < width && z < height)
-                            pixels[(z * width + x) * 2 + 1] = 255;
+                            pixels[(z * width + x) * 2 + 1] = System.Math.Max(pixels[(z * width + x) * 2 + 1], keptAway);
                     }
                 }
             }
@@ -370,7 +373,7 @@ public partial class WaterBody : WaterNode
             {
                 var across = (float)i / count - 0.5f;
                 var at = row.Middle + along * (across * length);
-                var byteValue = (byte)(row.Value * Mathf.SmoothStep(HiddenFrom, 1f, WaterPath.SideFade(across, row.Leaving)) * 255f);
+                var byteValue = (byte)(row.Value * Mathf.SmoothStep(HiddenFrom, 1f, WaterPath.SideFade(across, row.Leaving, row.Soft)) * 255f);
                 if (byteValue == 0)
                     continue;
                 // Two pixels each way, to leave no holes between one row and the next.

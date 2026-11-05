@@ -73,7 +73,8 @@ public abstract partial class WaterNode : Path3D
 
     public override void _EnterTree()
     {
-        Water.InTree.Add(this);
+        if (!Water.InTree.Contains(this))
+            Water.InTree.Add(this);
         SetNotifyTransform(true);
         var changed = new Callable(this, MethodName.QueueRebuild);
         if (!IsConnected(Path3D.SignalName.CurveChanged, changed))
@@ -85,7 +86,12 @@ public abstract partial class WaterNode : Path3D
     public override void _Notification(int what)
     {
         if (what == NotificationTransformChanged)
+        {
             RebuildPathsFromHere();
+            // What a path joins depends on where it is in the world, though its mesh's shape does not.
+            if (this is WaterPath)
+                QueueRebuild();
+        }
     }
 
     // Paths flowing from this water follow it when it changes.
