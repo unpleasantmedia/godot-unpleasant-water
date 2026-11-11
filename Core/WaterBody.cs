@@ -136,8 +136,11 @@ public partial class WaterBody : WaterNode
     {
         if (Material?.GetShaderParameter("shore_waves").AsBool() != true || !IsInsideTree())
             return;
-        if (!BakeShore() && tries > 1)
-            GetTree().CreateTimer(1f).Timeout += () => { if (IsInstanceValid(this)) TryBakingShore(tries - 1); };
+        BakeShore(baked =>
+        {
+            if (!baked && tries > 1 && IsInstanceValid(this) && IsInsideTree())
+                GetTree().CreateTimer(1f).Timeout += () => { if (IsInstanceValid(this)) TryBakingShore(tries - 1); };
+        });
     }
 
     private void UseShoreBake()
@@ -180,30 +183,41 @@ public partial class WaterBody : WaterNode
     }
 
     /// <summary>Works out how far each place is from the shore, from the ground. Run it again after changing the ground or the outline. False if there is no ground to go by.</summary>
-    public bool BakeShore()
+    public void BakeShore(System.Action<bool>? done = null)
     {
         var outline = Outline();
         if (outline.Length < 3 || WaterGround.Finder?.Invoke(this) is not { } ground)
-            return false;
+        {
+            done?.Invoke(false);
+            return;
+        }
+
         var box = Bounds(outline);
         var perPixel = Mathf.Max(FinestShoreMap, Mathf.Max(box.Size.X, box.Size.Y) / LargestShoreMap);
         var (width, height) = (Mathf.CeilToInt(box.Size.X / perPixel) + 1, Mathf.CeilToInt(box.Size.Y / perPixel) + 1);
-        var metres = new float[width * height];
         var surface = GlobalPosition.Y;
+        var toWorld = GlobalTransform;
+        // Worked out on a thread (the ground's heights read there; nothing must change it meanwhile), then kept here.
+        var started = WaterJob.Start(this, $"Bake Shore ({Name})", job =>
+        {
+        job.SetTotal(height * 3L);
+        var metres = new float[width * height];
         var anyLand = false;
         for (var z = 0; z < height; z++)
         {
             for (var x = 0; x < width; x++)
             {
-                var ground_height = ground.HeightAt(ToGlobal(new Vector3(box.Position.X + x * perPixel, 0f, box.Position.Y + z * perPixel)));
+                var ground_height = ground.HeightAt(toWorld * (new Vector3(box.Position.X + x * perPixel, 0f, box.Position.Y + z * perPixel)));
                 var land = !float.IsNaN(ground_height) && ground_height >= surface;
                 anyLand |= land;
                 metres[z * width + x] = land ? 0f : float.MaxValue;
             }
+
+            job.Step();
         }
 
         if (!anyLand)
-            return false;
+            return null;
         // There and back over the map, each place taking the nearest its neighbours have found.
         var (straight, diagonal) = (perPixel, perPixel * 1.41421f);
         for (var z = 0; z < height; z++)
@@ -224,6 +238,8 @@ public partial class WaterBody : WaterNode
 
                 metres[z * width + x] = best;
             }
+
+            job.Step();
         }
 
         for (var z = height - 1; z >= 0; z--)
@@ -244,17 +260,31 @@ public partial class WaterBody : WaterNode
 
                 metres[z * width + x] = best;
             }
+
+            job.Step();
         }
 
         var bytes = new byte[metres.Length * 4];
         System.Buffer.BlockCopy(metres, 0, bytes, 0, bytes.Length);
-        var corner = ToGlobal(new Vector3(box.Position.X, 0f, box.Position.Y));
-        KeepShoreBake(new WaterShoreBake
+        return bytes;
+        }, bytes =>
         {
-            Map = Image.CreateFromData(width, height, false, Image.Format.Rf, bytes),
-            Area = new Vector4(corner.X, corner.Z, (width - 1) * perPixel, (height - 1) * perPixel),
-        });
-        return true;
+            if (bytes is null || !IsInstanceValid(this))
+            {
+                done?.Invoke(false);
+                return;
+            }
+
+            var corner = toWorld * new Vector3(box.Position.X, 0f, box.Position.Y);
+            KeepShoreBake(new WaterShoreBake
+            {
+                Map = Image.CreateFromData(width, height, false, Image.Format.Rf, bytes),
+                Area = new Vector4(corner.X, corner.Z, (width - 1) * perPixel, (height - 1) * perPixel),
+            });
+            done?.Invoke(true);
+        }, readsTerrain: true);
+        if (!started)
+            done?.Invoke(false);
     }
 
     /// <summary>How far towards its full offshore waves a place is, from 0 at the shore to 1.</summary>

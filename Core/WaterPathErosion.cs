@@ -86,12 +86,12 @@ public partial class WaterPath
         }
 
         var spacing = ground.VertexSpacing;
-        var noise = new FastNoiseLite { Frequency = ErosionNoiseSize, Seed = (int)(Name.ToString().Hash() & 0x7fffffff) };
-        var length = Curve!.GetBakedLength();
+        var noise = new FastNoiseLite { Frequency = ErosionNoiseSize, Seed = _read.Seed };
+        var length = _read.Length;
         var amounts = new Dictionary<(int X, int Z), float>();
-        foreach (var step in Steps().Where(s => s.Along >= 0f && s.Along <= length))
+        foreach (var step in _read.Steps.Where(s => s.Along >= 0f && s.Along <= length))
         {
-            var centre = ToGlobal(step.At);
+            var centre = _read.ToWorld * step.At;
             // Solid to halfway out across the margin, then fading out as far past it.
             var solid = step.Width * 0.5f + RiverbedMargin * 0.5f;
             var core = step.Width * 0.5f + RiverbedMargin * 1.5f;
@@ -150,22 +150,50 @@ public partial class WaterPath
             return;
         }
 
-        var heights = new Dictionary<(int X, int Z), float>();
-        var originals = new Dictionary<(int X, int Z), float>();
-        var painted = new Dictionary<(int X, int Z), (int Was, int Now)>();
-        var rivers = RiversOnFromHere();
-        var lowered = rivers.Select(r => r.LoweredCurve()).ToList();
-        foreach (var path in rivers)
+        // It changes the terrain: not while another job is reading it.
+        if (Engine.GetMainLoop().GetMeta(WaterJob.TerrainReadersMeta, 0).AsInt32() > 0)
         {
-            path.Erode(ground, heights, originals);
-            if (!path.PaintRiverbed)
-                continue;
-            if (ground is IWaterGroundPaint paint)
-                path.PaintBed(ground, paint, painted);
-            else
-                GD.PushWarning("UnpleasantWater: this ground can't be painted.");
+            GD.PushWarning("Erode Terrain has to wait; a job is reading the terrain (see the Output for its progress).");
+            return;
         }
 
+        var rivers = RiversOnFromHere().Where(r => r.Curve is not null).ToList();
+        var lowered = rivers.Select(r => r.LoweredCurve()).ToList();
+        foreach (var path in rivers)
+            path.ReadForErosion();
+        // Worked out on a thread (the ground read there: nothing must change it meanwhile), then put in here.
+        WaterJob.Start(this, $"Erode Terrain ({Name})", job =>
+        {
+            job.SetTotal(rivers.Count);
+            var heights = new Dictionary<(int X, int Z), float>();
+            var originals = new Dictionary<(int X, int Z), float>();
+            var painted = new Dictionary<(int X, int Z), (int Was, int Now)>();
+            foreach (var path in rivers)
+            {
+                path.Erode(ground, heights, originals);
+                if (path.PaintRiverbed)
+                {
+                    if (ground is IWaterGroundPaint paint)
+                        path.PaintBed(ground, paint, painted);
+                    else
+                        GD.PushWarning("UnpleasantWater: this ground can't be painted.");
+                }
+
+                job.Step();
+            }
+
+            return (heights, originals, painted);
+        }, made =>
+        {
+            if (IsInstanceValid(this))
+                PutInErosion(made.heights, made.originals, made.painted, rivers, lowered);
+        }, readsTerrain: true);
+    }
+
+    /// <summary>What erosion worked out, put in: one step to undo.</summary>
+    private void PutInErosion(Dictionary<(int X, int Z), float> heights, Dictionary<(int X, int Z), float> originals,
+        Dictionary<(int X, int Z), (int Was, int Now)> painted, List<WaterPath> rivers, List<Curve3D> lowered)
+    {
         var changed = heights.Where(h => h.Value < originals[h.Key]).ToList();
         if (changed.Count == 0 && painted.Count == 0)
             return;
@@ -217,12 +245,18 @@ public partial class WaterPath
     private float MouthFade(Step step, float length) =>
         step.Ends is null ? 1f : Mathf.SmoothStep(0f, JoinBlend, length - step.Along);
 
+    /// <summary>What erosion needs of the scene, read on the main thread before it is worked out on another.</summary>
+    private (List<Step> Steps, Transform3D ToWorld, float Length, int Seed) _read;
+
+    private void ReadForErosion() =>
+        _read = (Steps(), GlobalTransform, Curve!.GetBakedLength(), (int)(Name.ToString().Hash() & 0x7fffffff));
+
     private void Erode(IWaterGround ground, Dictionary<(int X, int Z), float> heights, Dictionary<(int X, int Z), float> originals)
     {
         var spacing = ground.VertexSpacing;
-        var noise = new FastNoiseLite { Frequency = ErosionNoiseSize, Seed = (int)(Name.ToString().Hash() & 0x7fffffff) };
-        var length = Curve!.GetBakedLength();
-        var steps = Steps().Where(s => s.Along >= 0f && s.Along <= length).ToList();
+        var noise = new FastNoiseLite { Frequency = ErosionNoiseSize, Seed = _read.Seed };
+        var length = _read.Length;
+        var steps = _read.Steps.Where(s => s.Along >= 0f && s.Along <= length).ToList();
         var widest = steps.Count > 0 ? steps.Max(s => s.Width) : 1f;
         for (var pass = 1; pass <= ErosionPasses; pass++)
         {
@@ -230,7 +264,7 @@ public partial class WaterPath
             var worn = new Dictionary<(int X, int Z), float>();
             foreach (var step in steps)
             {
-                var centre = ToGlobal(step.At);
+                var centre = _read.ToWorld * step.At;
                 var core = step.Width * 0.5f;
                 // Its banks in keeping with its width here: a set margin would make a narrow stretch's cut as wide as a wide one's.
                 var reach = core + (Bank + ErosionWiden * pass) * step.Width / widest;
